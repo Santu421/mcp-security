@@ -1,0 +1,279 @@
+{
+  "name": "My workflow 16",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "6bb15bd9-7972-4f61-931b-ef8b3ff38720",
+      "name": "Start WF",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1872,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const workflowId = `tf-client-${Date.now()}`;\nconst startTime = new Date().toISOString();\n\nreturn {\n  json: {\n    workflowId,\n    startTime,\n    clientId: '0oaq24nw9jonnRGET5d7', // Real Okta OIDC Client ID\n    requestedBy: 'manual-trigger',\n    description: 'Client ID lifecycle management',\n    changes: [],\n    baselineTimestamp: startTime\n  }\n};"
+      },
+      "id": "a8ddd097-2913-4017-ba1f-555cb8efdc3d",
+      "name": "Initialize WF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1680,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://dev-52505730.okta.com/api/v1/apps/{{$json.clientId}}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "763dee6c-0c4c-484f-b6d5-a859be53a98d",
+      "name": "Trigger TF Activation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -1472,
+        -16
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vA4dYVY43B88GioA",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const prevData = $input.first().json;\nconst activationResponse = $input.last().json;\n\nconst changes = [...(prevData.changes || [])];\nchanges.push({\n  timestamp: new Date().toISOString(),\n  action: 'activation-requested',\n  details: {\n    clientId: prevData.clientId,\n    jobId: activationResponse.job_id || 'unknown'\n  }\n});\n\nreturn {\n  json: {\n    ...prevData,\n    terraformJobId: activationResponse.job_id,\n    baselineTimestamp: new Date().toISOString(),\n    changes\n  }\n};"
+      },
+      "id": "76668e87-8cbe-46ef-98d5-77b5caf3cfaf",
+      "name": "Log Activation Req",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1280,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 34
+      },
+      "id": "33a5fa14-dcc8-4835-8892-dcab04635dfa",
+      "name": "Manual Approval",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1072,
+        -112
+      ],
+      "webhookId": "75d400d1-8c1e-4e75-86ad-5af66415675f"
+    },
+    {
+      "parameters": {
+        "amount": 1440,
+        "unit": "minutes"
+      },
+      "id": "d72b56b3-0841-434c-b457-218955fe78dc",
+      "name": "24hr Auto Timeout",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1072,
+        96
+      ],
+      "webhookId": "a2ec3ee7-9d7a-4ed3-8ac7-d6ffceba9867"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simple deactivation - just log the action\nconst data = $input.first().json;\n\n// Add deactivation to changes log\nconst changes = [...(data.changes || [])];\nchanges.push({\n  timestamp: new Date().toISOString(),\n  action: 'client-deactivated',\n  details: {\n    clientId: data.clientId,\n    method: 'simulated'\n  }\n});\n\nreturn {\n  json: {\n    ...data,\n    status: 'deactivated',\n    changes\n  }\n};"
+      },
+      "id": "bbc72568-9f3e-42d4-81f8-5dcf4c5c2495",
+      "name": "Deactivate Client",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://dev-52505730.okta.com/api/v1/logs?limit=50&sortOrder=DESCENDING",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "e1829996-07f9-4fd6-8550-cb5dfa705629",
+      "name": "Fetch Okta Changes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -672,
+        -16
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vA4dYVY43B88GioA",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const workflowData = $input.first().json;\nconst oktaResponse = $input.last().json;\n\n// Handle different response formats from n8n HTTP node\nlet oktaLogs = [];\n\n// Debug the full response structure\nconsole.log('Full HTTP Response Keys:', Object.keys($input.last()));\nconsole.log('JSON Response:', JSON.stringify($input.last().json, null, 2));\n\n// Try to get all items from n8n response\nconst allItems = $input.all();\nconsole.log('All input items count:', allItems.length);\n\nif (allItems.length > 1) {\n    // Multiple items from HTTP node - each might be a log entry\n    oktaLogs = allItems.slice(1).map(item => item.json); // Skip first item (workflow data)\n} else if (Array.isArray(oktaResponse)) {\n    oktaLogs = oktaResponse;\n} else if (oktaResponse && typeof oktaResponse === 'object') {\n    // Check if this looks like a single log entry\n    if (oktaResponse.eventType && oktaResponse.displayMessage) {\n        // Single log entry - wrap in array\n        oktaLogs = [oktaResponse];\n    } else {\n        // Try different possible properties where the array might be\n        oktaLogs = oktaResponse.body || oktaResponse.data || oktaResponse.logs || [];\n        \n        // If still not an array, check if any object value is an array\n        if (!Array.isArray(oktaLogs)) {\n            const values = Object.values(oktaResponse);\n            const arrayValue = values.find(val => Array.isArray(val));\n            if (arrayValue) {\n                oktaLogs = arrayValue;\n            }\n        }\n    }\n}\n\n// Debug log to see what data we're getting\nconsole.log('Workflow Data:', JSON.stringify(workflowData, null, 2));\nconsole.log('Okta Response Type:', typeof oktaResponse);\nconsole.log('Okta Response Length:', Array.isArray(oktaResponse) ? oktaResponse.length : 'not array');\nconsole.log('Okta Response Sample:', JSON.stringify(oktaResponse, null, 2));\n\nconst clientId = workflowData.clientId || '0oaq24nw9jonnRGET5d7';\nconst startTime = workflowData.startTime || new Date().toISOString();\nconst workflowId = workflowData.workflowId || 'tf-client-' + Date.now();\nconst requestedBy = workflowData.requestedBy || 'manual-trigger';\nconst duration = Math.round((new Date() - new Date(startTime)) / 60000);\n\nconst finalReport = `\n<!DOCTYPE html>\n<html>\n<head>\n    <title>Terraform Client ID Lifecycle Report</title>\n    <style>\n        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }\n        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }\n        .header { background: #4CAF50; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }\n        .info { background: #e8f4f8; padding: 15px; border-radius: 5px; margin: 15px 0; }\n        .changes { background: #f9f9f9; padding: 15px; border-radius: 5px; margin: 15px 0; }\n        table { width: 100%; border-collapse: collapse; margin: 15px 0; }\n        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }\n        th { background-color: #f2f2f2; }\n    </style>\n</head>\n<body>\n    <div class=\"container\">\n        <div class=\"header\">\n            <h1>🔧 Terraform Client ID Lifecycle Report</h1>\n            <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>\n        </div>\n        \n        <div class=\"info\">\n            <h2>📋 Summary</h2>\n            <table>\n                <tr><th>Property</th><th>Value</th></tr>\n                <tr><td>Client ID</td><td>${clientId}</td></tr>\n                <tr><td>Workflow ID</td><td>${workflowId}</td></tr>\n                <tr><td>Requested By</td><td>${requestedBy}</td></tr>\n                <tr><td>Duration</td><td>${duration} minutes</td></tr>\n                <tr><td>Status</td><td><span style=\"color: #4CAF50; font-weight: bold;\">COMPLETED</span></td></tr>\n            </table>\n        </div>\n        \n        <div class=\"changes\">\n            <h2>🔄 Okta Changes Detected (${oktaLogs.length})</h2>\n            ${oktaLogs.length > 0 ? \n                `<ul>\n                ${oktaLogs.map((log, index) => {\n                    console.log('Processing log entry', index, ':', JSON.stringify(log, null, 2));\n                    return `<li><strong>${log.eventType || 'Unknown Event'}</strong>: ${log.displayMessage || 'No message'} \n                     <br><small>Actor: ${log.actor?.displayName || 'System'} | Result: ${log.outcome?.result || 'Unknown'} | Time: ${log.published ? new Date(log.published).toLocaleString() : 'Unknown time'}</small>\n                     <br><small>Target: ${log.target?.[0]?.displayName || log.target?.[0]?.alternateId || 'Unknown'} (${log.target?.[0]?.id || 'N/A'})</small></li>`;\n                }).join('')}\n                </ul>` : \n                '<p>No changes detected during workflow execution.</p>'\n            }\n            <div style=\"background: #fff3cd; padding: 10px; border-radius: 5px; margin-top: 15px;\">\n                <strong>Debug Info:</strong>\n                <br>Response Type: ${typeof oktaResponse}\n                <br>Is Array: ${Array.isArray(oktaResponse)}\n                <br>Raw Length: ${Array.isArray(oktaResponse) ? oktaResponse.length : 'N/A'}\n                <br>Processed Length: ${oktaLogs.length}\n                <br>Object Keys: ${oktaResponse ? Object.keys(oktaResponse).join(', ') : 'N/A'}\n                <br>First Entry Type: ${oktaLogs[0] ? typeof oktaLogs[0] : 'N/A'}\n                <br>Sample Data: ${oktaLogs[0] ? JSON.stringify(oktaLogs[0]).substring(0, 200) + '...' : 'N/A'}\n            </div>\n        </div>\n        \n        <div style=\"text-align: center; color: #666; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;\">\n            <small>Generated by n8n Terraform Client ID Lifecycle Workflow</small>\n        </div>\n    </div>\n</body>\n</html>\n`;\n\nreturn {\n  json: {\n    ...workflowData,\n    clientId,\n    workflowId,\n    finalReport,\n    duration,\n    oktaChanges: oktaLogs,\n    status: 'completed'\n  },\n  binary: {\n    data: {\n      data: Buffer.from(finalReport, 'utf8').toString('base64'),\n      mimeType: 'text/html',\n      fileName: `terraform-${workflowId}.html`\n    }\n  }\n};"
+      },
+      "id": "c8569c00-6240-48bf-ada9-f5eca3d88195",
+      "name": "Generate Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "fileName": "=terraform-{{$json.workflowId}}.html",
+        "options": {}
+      },
+      "id": "34961edc-fc9c-4c4b-adf5-08b009c60cb5",
+      "name": "Save Report",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        -272,
+        -16
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start WF": {
+      "main": [
+        [
+          {
+            "node": "Initialize WF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize WF": {
+      "main": [
+        [
+          {
+            "node": "Trigger TF Activation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger TF Activation": {
+      "main": [
+        [
+          {
+            "node": "Log Activation Req",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Activation Req": {
+      "main": [
+        [
+          {
+            "node": "Manual Approval",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "24hr Auto Timeout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Approval": {
+      "main": [
+        [
+          {
+            "node": "Deactivate Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "24hr Auto Timeout": {
+      "main": [
+        [
+          {
+            "node": "Deactivate Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deactivate Client": {
+      "main": [
+        [
+          {
+            "node": "Fetch Okta Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Okta Changes": {
+      "main": [
+        [
+          {
+            "node": "Generate Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Report": {
+      "main": [
+        [
+          {
+            "node": "Save Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f8193b17-2e51-41f0-be2e-b9d1497ee72f",
+  "meta": {
+    "instanceId": "edc5c2b5d8edb87ec1a41f1250c7de08731eb193241770cd8f904f5b7efd5d48"
+  },
+  "id": "JJjMRhuKjUi8Utaj",
+  "tags": [
+    {
+      "createdAt": "2025-09-03T15:30:24.075Z",
+      "updatedAt": "2025-09-03T15:30:24.075Z",
+      "id": "i6nTIPPEyskyEmdD",
+      "name": "terraform-lifecycle"
+    }
+  ]
+}
