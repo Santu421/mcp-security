@@ -1,0 +1,235 @@
+{
+  "name": "My workflow 16",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "99e1406f-7e8a-4e6f-bc59-7312cef3ee9f",
+      "name": "Start WF",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -672,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const workflowId = `tf-client-${Date.now()}`;\nconst startTime = new Date().toISOString();\n\nreturn {\n  json: {\n    workflowId,\n    startTime,\n    clientId: '0oaq24nw9jonnRGET5d7', // Real Okta OIDC Client ID\n    requestedBy: 'manual-trigger',\n    description: 'Client ID lifecycle management',\n    changes: [],\n    baselineTimestamp: startTime\n  }\n};"
+      },
+      "id": "ccb3eff0-d1d9-4d56-a821-29ad571e6e65",
+      "name": "Initialize WF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://dev-52505730.okta.com/api/v1/apps/{{$json.clientId}}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "c417e87f-caef-42ce-b883-3d6d4a261c1f",
+      "name": "Trigger TF Activation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -272,
+        -16
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vA4dYVY43B88GioA",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const prevData = $input.first().json;\nconst activationResponse = $input.last().json;\n\nconst changes = [...(prevData.changes || [])];\nchanges.push({\n  timestamp: new Date().toISOString(),\n  action: 'activation-requested',\n  details: {\n    clientId: prevData.clientId,\n    jobId: activationResponse.job_id || 'unknown'\n  }\n});\n\nreturn {\n  json: {\n    ...prevData,\n    terraformJobId: activationResponse.job_id,\n    baselineTimestamp: new Date().toISOString(),\n    changes\n  }\n};"
+      },
+      "id": "58028dee-5e35-4f14-a088-2fb541394f1b",
+      "name": "Log Activation Req",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 34
+      },
+      "id": "bfaff054-3b79-49e7-9d16-338c5c4fb5af",
+      "name": "Manual Approval",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        128,
+        -112
+      ],
+      "webhookId": "75d400d1-8c1e-4e75-86ad-5af66415675f"
+    },
+    {
+      "parameters": {
+        "amount": 1440,
+        "unit": "minutes"
+      },
+      "id": "e321c708-50ed-4f05-89e0-588131ca12cc",
+      "name": "24hr Auto Timeout",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        128,
+        96
+      ],
+      "webhookId": "a2ec3ee7-9d7a-4ed3-8ac7-d6ffceba9867"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simple deactivation - just log the action\nconst data = $input.first().json;\n\n// Add deactivation to changes log\nconst changes = [...(data.changes || [])];\nchanges.push({\n  timestamp: new Date().toISOString(),\n  action: 'client-deactivated',\n  details: {\n    clientId: data.clientId,\n    method: 'simulated'\n  }\n});\n\nreturn {\n  json: {\n    ...data,\n    status: 'deactivated',\n    changes\n  }\n};"
+      },
+      "id": "7751c847-2b99-4432-b0be-1a3a61129781",
+      "name": "Deactivate Client",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://dev-52505730.okta.com/api/v1/logs?limit=50&sortOrder=DESCENDING",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "1056dd37-be16-4bc5-864a-36606a3d8cbc",
+      "name": "Fetch Okta Changes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        528,
+        -16
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vA4dYVY43B88GioA",
+          "name": "Header Auth account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start WF": {
+      "main": [
+        [
+          {
+            "node": "Initialize WF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize WF": {
+      "main": [
+        [
+          {
+            "node": "Trigger TF Activation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger TF Activation": {
+      "main": [
+        [
+          {
+            "node": "Log Activation Req",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Activation Req": {
+      "main": [
+        [
+          {
+            "node": "Manual Approval",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "24hr Auto Timeout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Approval": {
+      "main": [
+        [
+          {
+            "node": "Deactivate Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "24hr Auto Timeout": {
+      "main": [
+        [
+          {
+            "node": "Deactivate Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deactivate Client": {
+      "main": [
+        [
+          {
+            "node": "Fetch Okta Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Okta Changes": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "881e72a3-47fc-404a-a3bb-4542b8d9f151",
+  "meta": {
+    "instanceId": "edc5c2b5d8edb87ec1a41f1250c7de08731eb193241770cd8f904f5b7efd5d48"
+  },
+  "id": "JJjMRhuKjUi8Utaj",
+  "tags": [
+    {
+      "createdAt": "2025-09-03T15:30:24.075Z",
+      "updatedAt": "2025-09-03T15:30:24.075Z",
+      "id": "i6nTIPPEyskyEmdD",
+      "name": "terraform-lifecycle"
+    }
+  ]
+}
